@@ -1,3 +1,0 @@
-D:/Projects/CodeCraft2021/CodeCraft-2021/cmake-build-debug/CMakeFiles/CodeCraft-2021.dir
-D:/Projects/CodeCraft2021/CodeCraft-2021/cmake-build-debug/CMakeFiles/edit_cache.dir
-D:/Projects/CodeCraft2021/CodeCraft-2021/cmake-build-debug/CMakeFiles/rebuild_cache.dir
