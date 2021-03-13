@@ -1,9 +1,15 @@
 #include <iostream>
 #include <vector>
+#include <cassert>
+#include <unordered_map>
 using namespace std;
 struct Server {
     string type;
     int cpuCores{}, memory{}, cost{}, dailyCost{};
+};
+struct ServerOwned {
+    Server& server;
+    int id;
 };
 struct VM {
     string type;
@@ -17,11 +23,66 @@ struct Request {
     int id{};
 };
 
-void readInput(vector<Server>& servers, vector<VM>& VMs, vector<vector<Request>>& requests) {
+unordered_map<string, Server> servers;
+vector<VM> VMs;
+
+
+struct Deployment {
+    struct DeploymentItem { int physcialServerId; char node; };
+    void print() {
+        for (const auto &d:deployments) {
+            if (d.node) printf("(%d, %c)\n", d.physcialServerId, d.node);
+            else printf("(%d)\n", d.physcialServerId);
+        }
+    }
+    void fulfill(ServerOwned server, char node = 0) {
+        deployments.push_back(DeploymentItem{server.id, node});
+    }
+    vector<DeploymentItem> deployments;
+};
+struct Purchase {
+    void print() {
+        printf("(purchase, %d)\n", items.size());
+        for(const auto& item: items){
+            printf("(%s, %d)\n", item.first.data(), item.second);
+        }
+    }
+    ServerOwned buy(string type) {
+        static int id = 0;
+        auto newServer = ServerOwned{servers[type], id++};
+        items[type]+=1;
+        return newServer;
+    }
+    ServerOwned buy(const Server& s) {
+        return buy(s.type);
+    }
+    unordered_map<string, int> items;
+};
+struct Migration {
+    struct MigrationAction {
+        MigrationAction(int i, int i1, char i2=0):vmId(i),serverId(i1),targetNode(i2){}
+
+        int vmId, serverId; char targetNode=0;
+    };
+    void print() {
+        printf("(migration, %d)\n", migrations.size());
+        for(const auto& migration: migrations){
+            if(migration.targetNode)
+                printf("(%d, %d)\n", migration.vmId, migration.serverId);
+            else
+                printf("(%d, %d, %c)\n", migration.vmId, migration.serverId, migration.targetNode);
+        }
+    }
+    void migration(int vm, int serverId) {
+        migrations.push_back(MigrationAction{vm, serverId, '\0'});
+    }
+    vector<MigrationAction> migrations;
+};
+
+void readInput(unordered_map<string, Server>& servers, vector<VM>& VMs, vector<vector<Request>>& requests) {
     int n;
     // read servers
     cin >> n;
-    cerr << n << endl;
 
     servers.reserve(n);
     Server s;
@@ -38,7 +99,7 @@ void readInput(vector<Server>& servers, vector<VM>& VMs, vector<vector<Request>>
         cin >> s.dailyCost;
         cin.ignore(1); // )
         s.type.pop_back();
-        servers.push_back(s);
+        servers[s.type] = s;
     }
     // read vms
     cin >> n;
@@ -94,12 +155,27 @@ void readInput(vector<Server>& servers, vector<VM>& VMs, vector<vector<Request>>
 int main()
 {
     // debugging only, remember to remove when submitting
-    freopen("training-1.txt","r", stdin);
+    freopen("../training-1.txt","r", stdin);
 
-    vector<Server> servers;
-    vector<VM> VMs;
     vector<vector<Request>> requests;
     readInput(servers, VMs, requests);
+    vector<ServerOwned> ownedServers;
 
+    //vector<pair<Purchase, Migration>> solution;
+    for(const auto& day: requests) {
+        Purchase p;
+        Migration m;
+        Deployment d;
+        for(const auto& req: day){
+            ownedServers.push_back(p.buy(servers.begin()->second));
+            if(req.requestType == Request::Type::ADD) {
+                d.fulfill(*ownedServers.end());
+            }
+        }
+        //solution.emplace_back(std::move(p),std::move(m));
+        p.print();
+        m.print();
+        d.print();
+    }
     return 0;
 }
