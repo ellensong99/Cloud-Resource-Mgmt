@@ -4,9 +4,9 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/Users/hu/Desktop/SDK_C++/CodeCraft-2021/CodeCraft-2021.cpp" "/Users/hu/Desktop/SDK_C++/CodeCraft-2021/cmake-build-debug/CMakeFiles/CodeCraft-2021.dir/CodeCraft-2021.cpp.o"
+  "D:/Projects/CodeCraft2021/CodeCraft-2021/CodeCraft-2021.cpp" "D:/Projects/CodeCraft2021/CodeCraft-2021/cmake-build-debug/CMakeFiles/CodeCraft-2021.dir/CodeCraft-2021.cpp.obj"
   )
-set(CMAKE_CXX_COMPILER_ID "Clang")
+set(CMAKE_CXX_COMPILER_ID "MSVC")
 
 # The include file search paths:
 set(CMAKE_CXX_TARGET_INCLUDE_PATH

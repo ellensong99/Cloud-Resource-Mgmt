@@ -1,1 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/c++   -O3 -Wall -std=c++11 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX10.15.sdk -Wl,-search_paths_first -Wl,-headerpad_max_install_names  CMakeFiles/CodeCraft-2021.dir/CodeCraft-2021.cpp.o  -o ../bin/CodeCraft-2021 

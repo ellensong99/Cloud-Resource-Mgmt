@@ -1,7 +1,9 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/CodeCraft-2021.dir/CodeCraft-2021.cpp.o"
+  "../bin/CodeCraft-2021.exe"
+  "../bin/CodeCraft-2021.exe.manifest"
+  "../bin/CodeCraft-2021.lib"
   "../bin/CodeCraft-2021.pdb"
-  "../bin/CodeCraft-2021"
+  "CMakeFiles/CodeCraft-2021.dir/CodeCraft-2021.cpp.obj"
 )
 
 # Per-language clean rules from dependency scanning.
