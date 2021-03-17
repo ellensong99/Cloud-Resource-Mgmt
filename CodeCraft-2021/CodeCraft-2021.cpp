@@ -2,20 +2,20 @@
 #include <vector>
 #include <cassert>
 #include <unordered_map>
+#include <unordered_set>
 using namespace std;
+
 struct Server {
     string type;
     int cpuCores{}, memory{}, cost{}, dailyCost{};
 };
-struct ServerOwned {
-    Server& server;
-    int id;
-};
+
 struct VM {
     string type;
     int cpuCores{}, memory{};
     bool doubleNode{};
 };
+
 struct Request {
     enum Type {ADD,DEL};
     Type requestType;
@@ -23,9 +23,85 @@ struct Request {
     int id{};
 };
 
-unordered_map<string, Server> servers;
-vector<VM> VMs;
+struct ServerOwned;
+unordered_map<int, ServerOwned*> vmIdToServerOwned;
+unordered_map<int, const VM*> vmIdToVMInfo;
 
+struct ServerOwned {
+    ServerOwned(Server& s, int i): server(s), id(i){}
+    Server& server;
+    unordered_set<int> nodeA, nodeB, doubleNode; // vm id in this server
+
+    int id;
+    int nodeACpuUsed = 0, nodeAMemoryUsed = 0, nodeBCpuUsed = 0, nodeBMemoryUsed = 0;
+    int nodeACpuLeft() { return server.cpuCores / 2 - nodeACpuUsed; }
+    int nodeBCpuLeft() { return server.cpuCores / 2 - nodeBCpuUsed; }
+    int nodeAMemoryLeft() { return server.memory / 2 - nodeAMemoryUsed; }
+    int nodeBMemoryLeft() { return server.memory / 2 - nodeBMemoryUsed; }
+    int maxCpuLeft() { return max(nodeACpuLeft(), nodeBCpuLeft()); }
+    int maxMemoryLeft() { return max(nodeAMemoryLeft(), nodeBMemoryLeft()); }
+    void allocateForVM(const VM& vm, int vmId, char node)
+    {
+        if (node == 'A') {
+            nodeACpuUsed += vm.cpuCores;
+            nodeAMemoryUsed += vm.memory;
+            nodeA.insert(vmId);
+        }else if (node == 'B') {
+            nodeBCpuUsed += vm.cpuCores;
+            nodeBMemoryUsed += vm.memory;
+            nodeB.insert(vmId);
+        }else
+        {
+            nodeACpuUsed += vm.cpuCores / 2;
+            nodeAMemoryUsed += vm.memory / 2;
+            nodeBCpuUsed += vm.cpuCores / 2;
+            nodeBMemoryUsed += vm.memory / 2;
+            doubleNode.insert(vmId);
+        }
+    }
+    void deallocateForVM(int vmId)
+    {
+        const VM& vm = *vmIdToVMInfo[vmId];
+        if (findAndRemove(nodeA, vmId)) {
+            nodeACpuUsed -= vm.cpuCores;
+            nodeAMemoryUsed -= vm.memory;
+        }
+        else if (findAndRemove(nodeB, vmId)) {
+            nodeBCpuUsed -= vm.cpuCores;
+            nodeBMemoryUsed -= vm.memory;
+        }
+        else
+        {
+            assert(findAndRemove(doubleNode, vmId));
+            nodeACpuUsed -= vm.cpuCores / 2;
+            nodeAMemoryUsed -= vm.memory / 2;
+            nodeBCpuUsed -= vm.cpuCores / 2;
+            nodeBMemoryUsed -= vm.memory / 2;
+        }
+    }
+
+    bool canAllocateForVM(const VM& vm, char node)
+    {
+        ServerOwned test = *this;
+        test.allocateForVM(vm, 0, node);
+        return !(nodeACpuLeft() < 0 || nodeAMemoryLeft() < 0 || nodeBCpuLeft() < 0 || nodeBMemoryLeft() < 0);
+    }
+
+private:
+    static bool findAndRemove(unordered_set<int>& s, int v)
+    {
+        auto iter = s.find(v);
+        bool found = iter != s.end();
+        if (found) s.erase(iter);
+        return found;
+    }
+    
+};
+
+
+unordered_map<string, Server> servers;
+
+unordered_map<string, VM> VMs;
 
 struct Deployment {
     struct DeploymentItem { int physcialServerId; char node; };
@@ -35,11 +111,16 @@ struct Deployment {
             else printf("(%d)\n", d.physcialServerId);
         }
     }
-    void fulfill(ServerOwned server, char node = 0) {
+    void fulfill(ServerOwned& server, Request req, char node = 0) {
+        auto& vm = VMs[req.vmType];
+        server.allocateForVM(vm, req.id, node);
         deployments.push_back(DeploymentItem{server.id, node});
+        vmIdToServerOwned[req.id] = &server;
+        vmIdToVMInfo[req.id] = &vm;
     }
     vector<DeploymentItem> deployments;
 };
+
 struct Purchase {
     void print() {
         printf("(purchase, %d)\n", items.size());
@@ -47,17 +128,17 @@ struct Purchase {
             printf("(%s, %d)\n", item.first.data(), item.second);
         }
     }
-    ServerOwned buy(string type) {
+    shared_ptr<ServerOwned> buy(string type) {
         static int id = 0;
-        auto newServer = ServerOwned{servers[type], id++};
-        items[type]+=1;
-        return newServer;
+        items[type] += 1;
+        return std::move(make_shared<ServerOwned>(servers[type], id++));
     }
-    ServerOwned buy(const Server& s) {
-        return buy(s.type);
+    shared_ptr<ServerOwned> buy(const Server& s) {
+        return std::move(buy(s.type));
     }
     unordered_map<string, int> items;
 };
+
 struct Migration {
     struct MigrationAction {
         MigrationAction(int i, int i1, char i2=0):vmId(i),serverId(i1),targetNode(i2){}
@@ -79,7 +160,7 @@ struct Migration {
     vector<MigrationAction> migrations;
 };
 
-void readInput(unordered_map<string, Server>& servers, vector<VM>& VMs, vector<vector<Request>>& requests) {
+void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>& VMs, vector<vector<Request>>& requests) {
     int n;
     // read servers
     cin >> n;
@@ -116,7 +197,7 @@ void readInput(unordered_map<string, Server>& servers, vector<VM>& VMs, vector<v
         cin >> vm.doubleNode;
         cin.ignore(1);
         vm.type.pop_back();
-        VMs.push_back(vm);
+        VMs[vm.type] = vm;
     }
     // read requests
     cin >> n;
@@ -155,24 +236,71 @@ void readInput(unordered_map<string, Server>& servers, vector<VM>& VMs, vector<v
 int main()
 {
     // debugging only, remember to remove when submitting
-    freopen("../training-1.txt","r", stdin);
+    freopen("../CodeCraft-2021/training-1.txt","r", stdin);
 
     vector<vector<Request>> requests;
     readInput(servers, VMs, requests);
-    vector<ServerOwned> ownedServers;
+    vector<shared_ptr<ServerOwned>> ownedServers;
 
-    //vector<pair<Purchase, Migration>> solution;
     for(const auto& day: requests) {
         Purchase p;
         Migration m;
         Deployment d;
         for(const auto& req: day){
-            ownedServers.push_back(p.buy(servers.begin()->second));
             if(req.requestType == Request::Type::ADD) {
-                d.fulfill(*ownedServers.end());
+                auto& vm = VMs[req.vmType];
+                bool fulfilled = false;
+                if(vm.doubleNode) // need to deploy on two nodes of server
+                {
+                    for (auto& ownedServer : ownedServers)
+                    {
+                        if(ownedServer->canAllocateForVM(vm, 0))
+                        {
+                            d.fulfill(*ownedServer, req, 0);
+                            fulfilled = true;
+                            break;
+                        }
+                    }
+                } else // can be deployed to one node of the server.
+                {
+                    for (auto& ownedServer : ownedServers)
+                    {
+                        char node = 'A';
+                        if (ownedServer->canAllocateForVM(vm, node))
+                        {
+                            d.fulfill(*ownedServer, req, node);
+                            fulfilled = true;
+                            break;
+                        }
+                        node = 'B';
+                        if (ownedServer->canAllocateForVM(vm, node))
+                        {
+                            d.fulfill(*ownedServer, req, node);
+                            fulfilled = true;
+                            break;
+                        }
+                    }
+                }
+                if(!fulfilled) // none of our current servers can host this vm.
+                {
+                    for(auto& specPair: servers)
+                    {
+                        auto spec = specPair.second;
+                        if( (vm.doubleNode && spec.cpuCores>=vm.cpuCores && spec.memory>=vm.memory) ||
+                            (!vm.doubleNode&& spec.cpuCores/2 >= vm.cpuCores && spec.memory/2 >= vm.memory))
+                        {
+                            auto newServer = p.buy(specPair.second);
+                            ownedServers.push_back(newServer);
+                            d.fulfill(*newServer, req, 'A');
+                            break;
+                        }
+                    }
+                }
+            }else
+            {
+                vmIdToServerOwned[req.id]->deallocateForVM(req.id);
             }
         }
-        //solution.emplace_back(std::move(p),std::move(m));
         p.print();
         m.print();
         d.print();
