@@ -4,6 +4,7 @@
 #include <cassert>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
 using namespace std;
 
 struct Server {
@@ -142,7 +143,7 @@ struct Deployment {
 
 struct Purchase {
     void print() {
-        printf("(purchase, %d)\n", items.size());
+        printf("(purchase, %lu)\n", items.size());
         for(const auto& item: items){
             printf("(%s, %d)\n", item.first.data(), item.second);
         }
@@ -165,7 +166,7 @@ struct Migration {
         int vmId, serverId; char targetNode=0;
     };
     void print() {
-        printf("(migration, %d)\n", migrations.size());
+        printf("(migration, %lu)\n", migrations.size());
         for(const auto& migration: migrations){
             if(migration.targetNode)
                 printf("(%d, %d)\n", migration.vmId, migration.serverId);
@@ -254,7 +255,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
 int main()
 {
     // debugging only, remember to remove when submitting
-    freopen("../CodeCraft-2021/training-1.txt","r", stdin);
+    //freopen("../CodeCraft-2021/training-1.txt","r", stdin);
 
     vector<vector<Request>> requests;
     readInput(servers, VMs, requests);
