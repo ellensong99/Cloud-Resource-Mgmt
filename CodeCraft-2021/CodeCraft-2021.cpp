@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include <vector>
 #include <cassert>
@@ -82,9 +83,22 @@ struct ServerOwned {
 
     bool canAllocateForVM(const VM& vm, char node)
     {
-        ServerOwned test = *this;
-        test.allocateForVM(vm, 0, node);
-        return !(nodeACpuLeft() < 0 || nodeAMemoryLeft() < 0 || nodeBCpuLeft() < 0 || nodeBMemoryLeft() < 0);
+        if (node == 'A') {
+            if(nodeACpuUsed + vm.cpuCores > server.cpuCores / 2) return false;
+            if (nodeAMemoryUsed + vm.memory > server.memory / 2) return false;
+        }
+        else if (node == 'B') {
+            if (nodeBCpuUsed + vm.cpuCores > server.cpuCores / 2) return false;
+            if (nodeBMemoryUsed + vm.memory > server.memory / 2) return false;
+        }
+        else
+        {
+            if (nodeACpuUsed + vm.cpuCores /2 > server.cpuCores / 2) return false;
+            if (nodeAMemoryUsed + vm.memory/2 > server.memory / 2) return false;
+            if (nodeBCpuUsed + vm.cpuCores/2 > server.cpuCores / 2) return false;
+            if (nodeBMemoryUsed + vm.memory/2 > server.memory / 2) return false;
+        }
+        return true;
     }
 
 private:
@@ -231,7 +245,6 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
         aDayRequest.clear();
     }
 }
-
 
 int main()
 {
