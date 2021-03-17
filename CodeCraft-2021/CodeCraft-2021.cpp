@@ -84,7 +84,7 @@ struct ServerOwned {
     bool canAllocateForVM(const VM& vm, char node)
     {
         if (node == 'A') {
-            if(nodeACpuUsed + vm.cpuCores > server.cpuCores / 2) return false;
+            if (nodeACpuUsed + vm.cpuCores > server.cpuCores / 2) return false;
             if (nodeAMemoryUsed + vm.memory > server.memory / 2) return false;
         }
         else if (node == 'B') {
@@ -93,10 +93,10 @@ struct ServerOwned {
         }
         else
         {
-            if (nodeACpuUsed + vm.cpuCores /2 > server.cpuCores / 2) return false;
-            if (nodeAMemoryUsed + vm.memory/2 > server.memory / 2) return false;
-            if (nodeBCpuUsed + vm.cpuCores/2 > server.cpuCores / 2) return false;
-            if (nodeBMemoryUsed + vm.memory/2 > server.memory / 2) return false;
+            if (nodeACpuUsed + vm.cpuCores / 2 > server.cpuCores / 2) return false;
+            if (nodeAMemoryUsed + vm.memory / 2 > server.memory / 2) return false;
+            if (nodeBCpuUsed + vm.cpuCores / 2 > server.cpuCores / 2) return false;
+            if (nodeBMemoryUsed + vm.memory / 2 > server.memory / 2) return false;
         }
         return true;
     }
@@ -128,9 +128,14 @@ struct Deployment {
     void fulfill(ServerOwned& server, Request req, char node = 0) {
         auto& vm = VMs[req.vmType];
         server.allocateForVM(vm, req.id, node);
-        deployments.push_back(DeploymentItem{server.id, node});
+        deployments.push_back(DeploymentItem{ server.id, node });
         vmIdToServerOwned[req.id] = &server;
         vmIdToVMInfo[req.id] = &vm;
+        /*printf("Allocating VM core=%d mem=%d to server %d core=%d mem=%d [node=%c]\n", vm.cpuCores, vm.memory, server.id, server.server.cpuCores, server.server.memory, node == 0 ? 'D' : node);
+        printf("Remaining: A: core=%d/%d,mem=%d/%d\tB: core=%d/%d,mem=%d/%d\n",
+            server.nodeACpuLeft(), server.server.cpuCores / 2, server.nodeAMemoryLeft(), server.server.memory / 2,
+            server.nodeBCpuLeft(), server.server.cpuCores / 2, server.nodeBMemoryLeft(), server.server.memory / 2
+        );*/
     }
     vector<DeploymentItem> deployments;
 };
