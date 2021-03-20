@@ -310,7 +310,7 @@ int main()
                         {
                             auto newServer = p.buy(specPair.second);
                             ownedServers.push_back(newServer);
-                            d.fulfill(*newServer, req, 'A');
+                            d.fulfill(*newServer, req, vm.doubleNode?0:'A');
                             break;
                         }
                     }
