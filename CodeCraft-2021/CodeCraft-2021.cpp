@@ -119,7 +119,7 @@ unordered_map<string, Server> servers;
 unordered_map<string, VM> VMs;
 
 struct Deployment {
-    struct DeploymentItem { int physcialServerId; char node; };
+    struct DeploymentItem { int& physcialServerId; char node; };
     void print() {
         for (const auto &d:deployments) {
             if (d.node) printf("(%d, %c)\n", d.physcialServerId, d.node);
@@ -132,11 +132,11 @@ struct Deployment {
         deployments.push_back(DeploymentItem{ server.id, node });
         vmIdToServerOwned[req.id] = &server;
         vmIdToVMInfo[req.id] = &vm;
-        /*printf("Allocating VM core=%d mem=%d to server %d core=%d mem=%d [node=%c]\n", vm.cpuCores, vm.memory, server.id, server.server.cpuCores, server.server.memory, node == 0 ? 'D' : node);
-        printf("Remaining: A: core=%d/%d,mem=%d/%d\tB: core=%d/%d,mem=%d/%d\n",
-            server.nodeACpuLeft(), server.server.cpuCores / 2, server.nodeAMemoryLeft(), server.server.memory / 2,
-            server.nodeBCpuLeft(), server.server.cpuCores / 2, server.nodeBMemoryLeft(), server.server.memory / 2
-        );*/
+       // printf("Allocating VM %s core=%d mem=%d to server %d core=%d mem=%d [node=%c]\n",vm.type.c_str(), vm.cpuCores, vm.memory, server.id, server.server.cpuCores, server.server.memory, node == 0 ? 'D' : node);
+       // printf("Remaining: A: core=%d/%d,mem=%d/%d\tB: core=%d/%d,mem=%d/%d\n",
+       //     server.nodeACpuLeft(), server.server.cpuCores / 2, server.nodeAMemoryLeft(), server.server.memory / 2,
+       //     server.nodeBCpuLeft(), server.server.cpuCores / 2, server.nodeBMemoryLeft(), server.server.memory / 2
+       // );
     }
     vector<DeploymentItem> deployments;
 };
@@ -149,14 +149,26 @@ struct Purchase {
         }
     }
     shared_ptr<ServerOwned> buy(string type) {
-        static int id = 0;
         items[type] += 1;
-        return std::move(make_shared<ServerOwned>(servers[type], id++));
+        auto s = make_shared<ServerOwned>(servers[type], -1);
+        newServers.push_back(s);
+        return std::move(s);
     }
     shared_ptr<ServerOwned> buy(const Server& s) {
         return std::move(buy(s.type));
     }
+    void assignId()
+    {
+        static int id = 0;
+        for (const auto& item : items) {
+            for (auto& server:newServers)
+            {
+                if (server->server.type == item.first) server->id = id++;
+            }
+        }
+    }
     unordered_map<string, int> items;
+    vector<shared_ptr<ServerOwned>> newServers;
 };
 
 struct Migration {
@@ -255,32 +267,34 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
 int main()
 {
     // debugging only, remember to remove when submitting
-    //freopen("../CodeCraft-2021/training-1.txt","r", stdin);
+    //freopen("../CodeCraft-2021/training-2.txt","r", stdin);
+    //freopen("../judger/out", "w", stdout);
 
     vector<vector<Request>> requests;
     readInput(servers, VMs, requests);
     vector<shared_ptr<ServerOwned>> ownedServers;
 
-    for(const auto& day: requests) {
+    for (const auto& day : requests) {
         Purchase p;
         Migration m;
         Deployment d;
-        for(const auto& req: day){
-            if(req.requestType == Request::Type::ADD) {
+        for (const auto& req : day) {
+            if (req.requestType == Request::Type::ADD) {
                 auto& vm = VMs[req.vmType];
                 bool fulfilled = false;
-                if(vm.doubleNode) // need to deploy on two nodes of server
+                if (vm.doubleNode) // need to deploy on two nodes of server
                 {
                     for (auto& ownedServer : ownedServers)
                     {
-                        if(ownedServer->canAllocateForVM(vm, 0))
+                        if (ownedServer->canAllocateForVM(vm, 0))
                         {
                             d.fulfill(*ownedServer, req, 0);
                             fulfilled = true;
                             break;
                         }
                     }
-                } else // can be deployed to one node of the server.
+                }
+                else // can be deployed to one node of the server.
                 {
                     for (auto& ownedServer : ownedServers)
                     {
@@ -300,26 +314,34 @@ int main()
                         }
                     }
                 }
-                if(!fulfilled) // none of our current servers can host this vm.
+                if (!fulfilled) // none of our current servers can host this vm.
                 {
-                    for(auto& specPair: servers)
+                    for (auto& specPair : servers)
                     {
                         auto spec = specPair.second;
-                        if( (vm.doubleNode && spec.cpuCores>=vm.cpuCores && spec.memory>=vm.memory) ||
-                            (!vm.doubleNode&& spec.cpuCores/2 >= vm.cpuCores && spec.memory/2 >= vm.memory))
+                        if ((vm.doubleNode && spec.cpuCores >= vm.cpuCores && spec.memory >= vm.memory) ||
+                            (!vm.doubleNode && spec.cpuCores / 2 >= vm.cpuCores && spec.memory / 2 >= vm.memory))
                         {
                             auto newServer = p.buy(specPair.second);
                             ownedServers.push_back(newServer);
-                            d.fulfill(*newServer, req, vm.doubleNode?0:'A');
+                            d.fulfill(*newServer, req, vm.doubleNode ? 0 : 'A');
+                            fulfilled = true;
                             break;
                         }
                     }
+                    if (!fulfilled)
+                    {
+                        cerr << "Failed to fulfill VM " << vm.type << endl;
+                        exit(-1);
+                    }
                 }
-            }else
+            }
+            else
             {
                 vmIdToServerOwned[req.id]->deallocateForVM(req.id);
             }
         }
+        p.assignId();
         p.print();
         m.print();
         d.print();
