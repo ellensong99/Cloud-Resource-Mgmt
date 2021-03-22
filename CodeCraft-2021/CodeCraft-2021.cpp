@@ -5,11 +5,19 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
+#include <algorithm>
 using namespace std;
+
+int nDays;
 
 struct Server {
     string type;
     int cpuCores{}, memory{}, cost{}, dailyCost{};
+    unsigned long long weight = -1;
+    void calcWeight()
+    {
+        weight = (cost + dailyCost * nDays / 2); //* 10000 / (cpuCores + memory);
+    }
 };
 
 struct VM {
@@ -33,6 +41,12 @@ struct ServerOwned {
     ServerOwned(Server& s, int i): server(s), id(i){}
     Server& server;
     unordered_set<int> nodeA, nodeB, doubleNode; // vm id in this server
+
+    // lower the better
+    int weight()
+    {
+        return maxCpuLeft() + maxMemoryLeft();
+    }
 
     int id;
     int nodeACpuUsed = 0, nodeAMemoryUsed = 0, nodeBCpuUsed = 0, nodeBMemoryUsed = 0;
@@ -113,9 +127,8 @@ private:
     
 };
 
-
 unordered_map<string, Server> servers;
-
+vector<Server> serverWeighted;
 unordered_map<string, VM> VMs;
 
 struct Deployment {
@@ -198,6 +211,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
     cin >> n;
 
     servers.reserve(n);
+    serverWeighted.reserve(n);
     Server s;
     while (n--) {
         cin.ignore(2); // \n and (
@@ -213,6 +227,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
         cin.ignore(1); // )
         s.type.pop_back();
         servers[s.type] = s;
+        serverWeighted.push_back(s);
     }
     // read vms
     cin >> n;
@@ -233,6 +248,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
     }
     // read requests
     cin >> n;
+    nDays = n;
     requests.reserve(n);
     Request req;
     vector<Request> aDayRequest;
@@ -264,6 +280,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
     }
 }
 
+
 int main()
 {
     // debugging only, remember to remove when submitting
@@ -274,17 +291,28 @@ int main()
     readInput(servers, VMs, requests);
     vector<shared_ptr<ServerOwned>> ownedServers;
 
+    for (auto& s : serverWeighted) s.calcWeight();
+
+    sort(serverWeighted.begin(), serverWeighted.end(), [](Server& s1, Server& s2)-> bool
+        {
+            return s1.weight < s2.weight;
+        });
+    
     for (const auto& day : requests) {
         Purchase p;
         Migration m;
         Deployment d;
         for (const auto& req : day) {
+            //sort(ownedServers.begin(), ownedServers.end(), [](shared_ptr<ServerOwned> s1, shared_ptr<ServerOwned> s2)-> bool
+            //    {
+            //        return s1->weight() < s2->weight();
+            //    });
             if (req.requestType == Request::Type::ADD) {
                 auto& vm = VMs[req.vmType];
                 bool fulfilled = false;
-                if (vm.doubleNode) // need to deploy on two nodes of server
+                for (auto& ownedServer : ownedServers)
                 {
-                    for (auto& ownedServer : ownedServers)
+                    if (vm.doubleNode) // need to deploy on two nodes of server
                     {
                         if (ownedServer->canAllocateForVM(vm, 0))
                         {
@@ -292,11 +320,9 @@ int main()
                             fulfilled = true;
                             break;
                         }
+
                     }
-                }
-                else // can be deployed to one node of the server.
-                {
-                    for (auto& ownedServer : ownedServers)
+                    else // can be deployed to one node of the server.
                     {
                         char node = 'A';
                         if (ownedServer->canAllocateForVM(vm, node))
@@ -314,15 +340,15 @@ int main()
                         }
                     }
                 }
+
                 if (!fulfilled) // none of our current servers can host this vm.
                 {
-                    for (auto& specPair : servers)
+                    for (auto& spec : serverWeighted)
                     {
-                        auto spec = specPair.second;
                         if ((vm.doubleNode && spec.cpuCores >= vm.cpuCores && spec.memory >= vm.memory) ||
                             (!vm.doubleNode && spec.cpuCores / 2 >= vm.cpuCores && spec.memory / 2 >= vm.memory))
                         {
-                            auto newServer = p.buy(specPair.second);
+                            auto newServer = p.buy(spec);
                             ownedServers.push_back(newServer);
                             d.fulfill(*newServer, req, vm.doubleNode ? 0 : 'A');
                             fulfilled = true;
