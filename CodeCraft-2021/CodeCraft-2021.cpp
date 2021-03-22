@@ -45,7 +45,8 @@ struct ServerOwned {
     // lower the better
     int weight()
     {
-        return maxCpuLeft() + maxMemoryLeft();
+        bool emptyServer = nodeA.empty() && nodeB.empty() && doubleNode.empty();
+        return maxCpuLeft() + maxMemoryLeft() + emptyServer * 1000;
     }
 
     int id;
@@ -193,14 +194,14 @@ struct Migration {
     void print() {
         printf("(migration, %lu)\n", migrations.size());
         for(const auto& migration: migrations){
-            if(migration.targetNode)
+            if(!migration.targetNode)
                 printf("(%d, %d)\n", migration.vmId, migration.serverId);
             else
                 printf("(%d, %d, %c)\n", migration.vmId, migration.serverId, migration.targetNode);
         }
     }
-    void migration(int vm, int serverId) {
-        migrations.push_back(MigrationAction{vm, serverId, '\0'});
+    void migration(int vm, int serverId, char node) {
+        migrations.emplace_back(vm, serverId, node);
     }
     vector<MigrationAction> migrations;
 };
@@ -281,6 +282,45 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
 }
 
 
+unordered_map<int, int> weights;
+
+vector<shared_ptr<ServerOwned>> ownedServers;
+
+pair<shared_ptr<ServerOwned>, char> findAvailableServer(const VM& vm)
+{
+    if (vm.doubleNode) // need to deploy on two nodes of server
+    {
+        for (auto& ownedServer : ownedServers)
+            if (ownedServer->canAllocateForVM(vm, 0))
+                return make_pair(ownedServer, 0);
+    }
+    else // can be deployed to one node of the server.
+    {
+        for (auto& ownedServer : ownedServers)
+        {
+            if (ownedServer->canAllocateForVM(vm, 'A'))
+                return make_pair(ownedServer, 'A');
+            if (ownedServer->canAllocateForVM(vm, 'B'))
+                return make_pair(ownedServer, 'B');
+        }
+    }
+    return make_pair(nullptr, 0); // not found
+}
+
+bool tryMigrate(int vmId, shared_ptr<ServerOwned> so, Migration& m)
+{
+    auto& vm = *vmIdToVMInfo[vmId];
+    auto res = findAvailableServer(vm);
+    if(res.first && res.first.get() != so.get())
+    {
+        res.first->allocateForVM(vm, vmId, res.second);
+        so->deallocateForVM(vmId);
+        vmIdToServerOwned[vmId] = res.first.get();
+        m.migration(vmId, res.first->id, res.second);
+        return true;
+    }
+    return false;
+}
 int main()
 {
     // debugging only, remember to remove when submitting
@@ -289,7 +329,6 @@ int main()
 
     vector<vector<Request>> requests;
     readInput(servers, VMs, requests);
-    vector<shared_ptr<ServerOwned>> ownedServers;
 
     for (auto& s : serverWeighted) s.calcWeight();
 
@@ -299,50 +338,37 @@ int main()
         });
     
     for (const auto& day : requests) {
-        Purchase p;
+        //for (auto& os : ownedServers) weights[os->id] = os->weight();
+        //sort(ownedServers.begin(), ownedServers.end(), [](shared_ptr<ServerOwned> s1, shared_ptr<ServerOwned> s2)-> bool
+        //    {   return weights[s1->id] < weights[s2->id]; });
+
         Migration m;
+        for (auto& so : ownedServers) {
+            if (m.migrations.size() + 1 >= 5 * ownedServers.size() / 1000) break;
+
+            if (so->nodeA.size() + so->nodeB.size() + so->doubleNode.size() == 1) {
+                int vmId = 0;
+                if (!so->nodeA.empty()) vmId = *so->nodeA.begin();
+                else if (!so->nodeB.empty()) vmId = *so->nodeB.begin();
+                else if (!so->doubleNode.empty()) vmId = *so->doubleNode.begin();
+                else continue;
+
+                tryMigrate(vmId, so, m);
+            }
+        }
+        Purchase p;
         Deployment d;
         for (const auto& req : day) {
-            //sort(ownedServers.begin(), ownedServers.end(), [](shared_ptr<ServerOwned> s1, shared_ptr<ServerOwned> s2)-> bool
-            //    {
-            //        return s1->weight() < s2->weight();
-            //    });
             if (req.requestType == Request::Type::ADD) {
                 auto& vm = VMs[req.vmType];
-                bool fulfilled = false;
-                for (auto& ownedServer : ownedServers)
+                auto res = findAvailableServer(vm);
+                if(res.first)
                 {
-                    if (vm.doubleNode) // need to deploy on two nodes of server
-                    {
-                        if (ownedServer->canAllocateForVM(vm, 0))
-                        {
-                            d.fulfill(*ownedServer, req, 0);
-                            fulfilled = true;
-                            break;
-                        }
-
-                    }
-                    else // can be deployed to one node of the server.
-                    {
-                        char node = 'A';
-                        if (ownedServer->canAllocateForVM(vm, node))
-                        {
-                            d.fulfill(*ownedServer, req, node);
-                            fulfilled = true;
-                            break;
-                        }
-                        node = 'B';
-                        if (ownedServer->canAllocateForVM(vm, node))
-                        {
-                            d.fulfill(*ownedServer, req, node);
-                            fulfilled = true;
-                            break;
-                        }
-                    }
+                    d.fulfill(*res.first, req, res.second);
                 }
-
-                if (!fulfilled) // none of our current servers can host this vm.
+                else // none of our current servers can host this vm.
                 {
+                    bool fulfilled = false;
                     for (auto& spec : serverWeighted)
                     {
                         if ((vm.doubleNode && spec.cpuCores >= vm.cpuCores && spec.memory >= vm.memory) ||
@@ -364,7 +390,8 @@ int main()
             }
             else
             {
-                vmIdToServerOwned[req.id]->deallocateForVM(req.id);
+                auto serverOwned = vmIdToServerOwned[req.id];
+                serverOwned->deallocateForVM(req.id);
             }
         }
         p.assignId();
