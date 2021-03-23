@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <memory>
 #include <algorithm>
+#include <set>
 using namespace std;
 
 int nDays;
@@ -24,13 +25,6 @@ struct VM {
     string type;
     int cpuCores{}, memory{};
     bool doubleNode{};
-};
-
-struct Request {
-    enum Type {ADD,DEL};
-    Type requestType;
-    string vmType;
-    int id{};
 };
 
 struct ServerOwned;
@@ -132,10 +126,25 @@ unordered_map<string, Server> servers;
 vector<Server> serverWeighted;
 unordered_map<string, VM> VMs;
 
+
+struct Request {
+    enum Type { ADD, DEL };
+    Type requestType;
+    string vmType;
+    int id{};
+    int originalOrder{};
+    int weight() const noexcept
+    {
+        assert(requestType == ADD);
+        auto& vm = VMs[vmType];
+        return vm.cpuCores + vm.memory;
+    }
+};
+
 struct Deployment {
-    struct DeploymentItem { int& physcialServerId; char node; };
+    struct DeploymentItem { int& physcialServerId; char node; int order; };
     void print() {
-        for (const auto &d:deployments) {
+        for (const auto& d : deployments) {
             if (d.node) printf("(%d, %c)\n", d.physcialServerId, d.node);
             else printf("(%d)\n", d.physcialServerId);
         }
@@ -143,16 +152,20 @@ struct Deployment {
     void fulfill(ServerOwned& server, Request req, char node = 0) {
         auto& vm = VMs[req.vmType];
         server.allocateForVM(vm, req.id, node);
-        deployments.push_back(DeploymentItem{ server.id, node });
+        deployments.insert(DeploymentItem{ server.id, node, req.originalOrder });
         vmIdToServerOwned[req.id] = &server;
         vmIdToVMInfo[req.id] = &vm;
-       // printf("Allocating VM %s core=%d mem=%d to server %d core=%d mem=%d [node=%c]\n",vm.type.c_str(), vm.cpuCores, vm.memory, server.id, server.server.cpuCores, server.server.memory, node == 0 ? 'D' : node);
-       // printf("Remaining: A: core=%d/%d,mem=%d/%d\tB: core=%d/%d,mem=%d/%d\n",
-       //     server.nodeACpuLeft(), server.server.cpuCores / 2, server.nodeAMemoryLeft(), server.server.memory / 2,
-       //     server.nodeBCpuLeft(), server.server.cpuCores / 2, server.nodeBMemoryLeft(), server.server.memory / 2
-       // );
+        // printf("Allocating VM %s core=%d mem=%d to server %d core=%d mem=%d [node=%c]\n",vm.type.c_str(), vm.cpuCores, vm.memory, server.id, server.server.cpuCores, server.server.memory, node == 0 ? 'D' : node);
+        // printf("Remaining: A: core=%d/%d,mem=%d/%d\tB: core=%d/%d,mem=%d/%d\n",
+        //     server.nodeACpuLeft(), server.server.cpuCores / 2, server.nodeAMemoryLeft(), server.server.memory / 2,
+        //     server.nodeBCpuLeft(), server.server.cpuCores / 2, server.nodeBMemoryLeft(), server.server.memory / 2
+        // );
     }
-    vector<DeploymentItem> deployments;
+    struct cmp
+    {
+        bool operator()(const DeploymentItem& r1, const DeploymentItem& r2) const noexcept { return r1.order < r2.order; }
+    };
+    set<DeploymentItem, cmp> deployments;
 };
 
 struct Purchase {
@@ -258,6 +271,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
         int j;
         cin >> j;
         aDayRequest.reserve(j);
+        int order = 0;
         while (j--) {
             cin.ignore(2);
             cin >> type;
@@ -274,6 +288,7 @@ void readInput(unordered_map<string, Server>& servers, unordered_map<string, VM>
                 cin.ignore(1);
                 req.vmType.clear();
             }
+            req.originalOrder = order++;
             aDayRequest.push_back(req);
         }
         requests.push_back(aDayRequest);
@@ -324,7 +339,7 @@ bool tryMigrate(int vmId, shared_ptr<ServerOwned> so, Migration& m)
 int main()
 {
     // debugging only, remember to remove when submitting
-    //freopen("../CodeCraft-2021/training-2.txt","r", stdin);
+    // freopen("../CodeCraft-2021/training-2.txt","r", stdin);
     //freopen("../judger/out", "w", stdout);
 
     vector<vector<Request>> requests;
@@ -337,7 +352,7 @@ int main()
             return s1.weight < s2.weight;
         });
     
-    for (const auto& day : requests) {
+    for (auto& day : requests) {
         //for (auto& os : ownedServers) weights[os->id] = os->weight();
         //sort(ownedServers.begin(), ownedServers.end(), [](shared_ptr<ServerOwned> s1, shared_ptr<ServerOwned> s2)-> bool
         //    {   return weights[s1->id] < weights[s2->id]; });
@@ -358,6 +373,30 @@ int main()
         }
         Purchase p;
         Deployment d;
+
+        // partition and sort
+        auto startIter = day.begin();
+        auto startIterInvalid = startIter->requestType == Request::DEL;
+        auto cmp = [](const Request& r1, const Request& r2)-> bool {
+            return r1.weight() > r2.weight(); // allocate larger vm first.
+        };
+        for(auto iter = day.begin(); iter != day.end(); iter++)
+        {
+            if(iter->requestType==Request::DEL){
+                if (!startIterInvalid) {
+                    sort(startIter, iter, cmp);
+                }
+                startIterInvalid = true;
+            }else if (startIterInvalid)
+            {
+                startIterInvalid = false;
+                startIter = iter;
+            }
+        }
+        if (!startIterInvalid && day[day.size()-1].requestType==Request::ADD) {
+            sort(startIter, day.end(), cmp);
+        }
+
         for (const auto& req : day) {
             if (req.requestType == Request::Type::ADD) {
                 auto& vm = VMs[req.vmType];
