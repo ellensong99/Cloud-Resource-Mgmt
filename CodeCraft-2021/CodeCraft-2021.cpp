@@ -353,9 +353,6 @@ int main()
         });
     
     for (auto& day : requests) {
-        //for (auto& os : ownedServers) weights[os->id] = os->weight();
-        //sort(ownedServers.begin(), ownedServers.end(), [](shared_ptr<ServerOwned> s1, shared_ptr<ServerOwned> s2)-> bool
-        //    {   return weights[s1->id] < weights[s2->id]; });
 
         Migration m;
         for (auto& so : ownedServers) {
@@ -380,7 +377,7 @@ int main()
         auto cmp = [](const Request& r1, const Request& r2)-> bool {
             return r1.weight() > r2.weight(); // allocate larger vm first.
         };
-        for(auto iter = day.begin(); iter != day.end(); iter++)
+        for(auto iter = day.begin(); iter != day.end(); ++iter)
         {
             if(iter->requestType==Request::DEL){
                 if (!startIterInvalid) {
@@ -396,6 +393,10 @@ int main()
         if (!startIterInvalid && day[day.size()-1].requestType==Request::ADD) {
             sort(startIter, day.end(), cmp);
         }
+
+        //for (auto& os : ownedServers) weights[os->id] = os->weight();
+        //sort(ownedServers.begin(), ownedServers.end(), [](shared_ptr<ServerOwned> s1, shared_ptr<ServerOwned> s2)-> bool
+        //    {   return weights[s1->id] < weights[s2->id]; });
 
         for (const auto& req : day) {
             if (req.requestType == Request::Type::ADD) {
