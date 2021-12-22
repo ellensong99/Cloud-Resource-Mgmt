@@ -1,4 +1,4 @@
-# CodeCraft-2021 Cloud Resource Management
+# HuaWei CodeCraft-2021 Cloud Resource Management
 In Cloud Computing scenarios, proper resource allocation is an important step towards effective deployment and optimized VM planning. The algorithm finds the scheduling plan to minimize the costs to deploy virtual machines to servers.
 
 ## Sample Input
